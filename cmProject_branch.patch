@@ -1,0 +1,42 @@
+Index: Makefile
+===================================================================
+--- Makefile	(revision 37536)
++++ Makefile	(working copy)
+@@ -310,6 +310,37 @@
+ 	      echo "Cleaning $${cdir}" && rm -rf $${cdir};)
+ 
+ ######################################################
++# Branch rules ('make branch^component')
++######################################################
++
++ifneq ($(branch_TARGETS),)
++  curDATE=$(shell date +%Y%m%d)
++  curTIME=$(shell date +%H%M%S)
++  ifeq ($(BRANCH_NAME),)
++    $(error Must specify BRANCH_NAME)
++  endif
++  ifneq ($(filter all,$(branch_TARGETS)),)
++    # Branch all
++    BRANCH_LIST = $(NAMES)
++    $(error Not yet supported)
++  else
++    BRANCH_LIST = $(branch_TARGETS)
++  endif
++endif
++
++.PHONY: branch
++branch:
++	$(AT)$(foreach X,$(BRANCH_LIST),\
++	    $(if $(filter svnco,$($(X)_SRC_TYPE)),\
++	      rev=$$(svn info $($(X)_GRAFT) | grep "^Revision" | awk '{print $$2}');\
++	      target=$$(echo $($(X)_SRC) | sed -e "s/trunk/branches/"); \
++	      target=$$target/$$(echo $(BRANCH_NAME) | \
++	                sed -e "s/{REV}/$$rev/" \
++	                    -e "s/{DATE}/$(curDATE)/" \
++	                    -e "s/{TIME}/$(curTIME)/");\
++	      echo svn cp -r $$rev $($(X)_SRC) $$target;))
++
++######################################################
+ # Peg rules ('make peg' 'make unpeg')
+ ######################################################
+ 

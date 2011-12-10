@@ -1,0 +1,27 @@
+cmProject dependencies:
+
+General:
+    - gmake
+    - svn
+    - sh (bourne compatible)
+    - readlink (-f)
+    - rm
+    - mkdir (-p)
+    - echo
+    - grep
+    - ln (-sf)
+    - dirname
+    - tar
+    - head (-n 1)
+    - tail (-n 1)
+    - touch
+
+For tagging and pegging:
+    - awk
+    - sed (-i)
+
+For overlay only:
+    - sed
+    - sort 
+    - uniq
+    - find (-maxdepth -mindepth)

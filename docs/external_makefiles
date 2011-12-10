@@ -1,0 +1,44 @@
+When cmProject invokes the makefile of a sub-component it passes two
+make variables to them: OBJ_DEPS and SRC_DEPS. These two variables are
+a space separated list of the components that are needed by the
+current component for build dependencies and source dependencies
+respectively.
+
+In addition cmProject also passes down the variables PROJECT,
+PROJECT_builddir and builddir. PROJECT is the top of the cmProject,
+PROJECT_builddir is the top of the cmProject builddir (often
+<PROJECT>/build). builddir is the current components builddir.
+
+Here is a snippet of code that does the mangling of those variables.
+You'll want to include something similar near the top of your
+makefile:
+
+# ----------------------------------------------------------------------
+# Utility routines to find source and object/build directories
+
+# Find a srcdir
+findsrc = $(firstword $(wildcard $(PROJECT)/$(1) ))
+
+# Split source and build: find the first matching build directory
+findobj = $(firstword $(wildcard $(builddir)/../$(1) $(builddir)/$(1) \
+              $(PROJECT_builddir)/$(1) $(if $(filter /%,$(1)),$(1),) ))
+
+# Set VPATH, INCDIRS and libs based on SRC_DEPS and OBJ_DEPS
+VPATH += $(foreach X,$(OBJ_DEPS),$(call findobj,$(X)))
+_LDdirs += $(addprefix -L,$(foreach X,$(OBJ_DEPS),$(call findobj,$(X))))
+_INCdirs += $(addprefix -I,$(foreach X,$(OBJ_DEPS),$(call findobj,$(X))))
+
+VPATH += $(foreach X,$(SRC_DEPS),$(call findsrc,$(X)))
+_INCdirs += $(addprefix -I,$(foreach X,$(SRC_DEPS),$(call findsrc,$(X))))
+# ----------------------------------------------------------------------
+
+VPATH is a variable that directly affects the behavior make. You will
+need to append _LDdirs and _INCdirs into the appropriate variables in
+the makefile.  Most likely you will append _INCdirs to CFLAGS and/or
+CXXFLAGS append _LDdirs to LDFLAGS.
+
+Again, if you point me to the Makefile I can give you an idea of hard
+or easy it might be to get it working within the cmProject
+environment.
+
+

@@ -1,0 +1,350 @@
+cmProject:
+
+OVERVIEW:
+
+    A cmProject is a specified collection of input components, the
+    logic for how to turn those inputs into outputs, and a possibly
+    a set of tests that the outputs should satisfy. This information
+    is defined in the file "Project.def". This file uses a simple
+    subset of makefile syntax and contains attributes that define
+    inputs, outputs, and how to convert (build) inputs to outputs.
+
+KEY CONCEPTS:
+
+    svn externals:
+        A property on a subversion directory ("svn:externals") that
+        causes svn to create a directory that is backed to a different
+        subversion location. It can be thought of as a symlink or NFS
+        mount for svn working copies. The svn externals property can
+        be stored in subversion, but the action of the property
+        happens within svn (the client command) not within subversion
+        (the server).
+
+    recursive make:
+        Recursive make is when a makefile invokes the make command on
+        a different makefile. The important thing to note is that
+        different levels of recursive make invocations do not share
+        the same name-space. The master cmProject makefile and the
+        Project.def and in one makefile namespace. The makefiles for
+        each sub-component of a cmProject are in separate namespaces
+        from each other and from the top level cmProject namespace.
+
+    split source and build:
+        The cmProject system uses a split source and build directory
+        model for building components. The default build directory for
+        a component is "build/<component name>".
+
+
+RULES/ACTIONS:
+
+    The program scmake wrapper simply finds the top of the cmProject
+    directory and runs make there.
+
+    scmake populate
+        Updates the component inputs based on the attributes in
+        "Project.def" and then runs `svn update` to bring the svn
+        external inputs up to date.
+        "pop" is an alias for "populate".
+    
+    scmake populate^<name>
+        Only update a single component input. Note that this updates
+        the svn externals definition for svn inputs, but only runs
+        `svn update` on the input graft point specified.
+
+    scmake
+        Builds the outputs for all of the inputs defined in
+        "Project.def". By default, each the output from each component
+        build will be placed in "build/<component name>", however, the
+        "builddir" make commandline variable can be used to overide
+        the top-level output directory.
+
+    scmake <name>
+        Rebuild a single component output. This may trigger other
+        outputs to be rebuilt if they are specified as dependencies of
+	the requested output (i.e. via <name>_DEPS or <name>_PRE
+	rule). If BUILD_TYPE is "source" and a configure script exists
+	then it will be executed to generate a Makefile in the build
+	directory. If the build or source directory contains
+	a Makefile then this is executed to perform the build.
+    
+    scmake <name>^<sub-target>
+        The sub-target form appends <sub-target> to the make command.
+        This is useful for building objects that may not be included
+        in the "all" rule of the component Makefile.  A common use
+        of this is to clean just one build directory: `scmake
+        simh^clean`.  This is only meaningful if BUILD_TYPE is
+        "source", "kernel" or "kernelmod".
+
+    scmake clean
+        Removes the entire build directory.
+    
+    scmake clean^<name>
+        The sub-target form only removes <name> from the build
+        directory. This is different from `scmake <name>^clean` in
+        that it does a recursive remove rather than calling
+        the "clean" target in component Makefile.
+
+    scmake peg
+        Locks down each input to a specific svn revision by updating
+        "Project.def" so that all "svn" and "hg" inputs have
+        a revision attribute (<name>_REV). This is generally done
+        prior to tagging. Pegged revisions added in this manner have
+        a trailing comment that allows them to be removed by `scmake
+        unpeg`. To make the pegged revision stick, simply remove this
+        comment in "Project.def".
+
+        Also, if any inputs of type "link" do not point into the
+        binary repository, then this action fails.  This is because
+        only links into the binary repository are guaranteed to be
+        valid in the future.
+    
+    scmake peg^<name>
+	The sub-target form only pegs a single input and it does not
+	add the trailing comment. This is equivalent to manually
+	pegging the input to its current revision.
+
+    scmake unpeg
+        Removes any revision attributes from "Project.def" that were
+        added by `scmake peg`. This is generally done after a tagging
+        operation. This will only remove pegged revision that have
+        a trailing comment indicating they were added by `scmake peg`.
+    
+    scmake unpeg^<name>
+        The sub-target form unpegs a single input. The input will be
+        unpegged regardless of whether the trailing peg comment is
+        present. 
+
+    scmake tag TAG=TAGNAME
+	Tags the current cmProject so that it can be recreated
+	identically in the future. The variable TAG must be used to
+	set repo location for where the tag will be created. The
+	tag_check actions is called implicitly first.
+
+        The normal sequence of operations to tag a cmProject would be:
+            <check in all source changes in graft directories>
+            scmake peg
+            scmake pop (subversion limitation to sync file revisions)
+            scmake tag TAG=TAGNAME
+            scmake unpeg
+
+    scmake tag_check
+	Check to see if anything would prevent tagging. The action is
+	succesful if the following checks pass:
+	    - Input graft areas are fully committed
+	    - Input graft areas are updated to a single revision
+	    - No unknown files in input graft areas or the top level
+            - No svn switched directories
+            - Only toplevel externals (Project.def defined)
+
+
+    scmake overlay  [OVERLAY_SCX1000=<path>]
+         This action causes your cmProject to overlay a full scx1000
+         tree checkout using symlinks. This allows you to run hardware
+         tests on the current source changes in your cmProject
+         directory. The OVERLAY_SCX1000 variable specifies the
+         location you want to overlay which is a full checkout of
+         "svn+ssh://svn.sicortex.com/svn/master/scx1000/trunk".  While
+         overlaying you cannot do most other cmProject actions in your
+         cmProject directory.
+
+         There are some types of input definitions that will prevent
+         overlaying because they are overly complex or would require
+         backlinks from the scx1000 directory (which might be
+         readonly). If you find a case that you think should be
+         allowed please raise this to the cmProject maintainer(s).
+
+    scmake unoverlay
+        Remove the overlay symlinks that were created by `scmake
+        overlay`.
+
+    scmake showVars 
+        Show the run time values of cmProject variables.
+    
+    scmake showVars^<name>
+        The sub-target form lists all <name>_* variables.
+
+ATTRIBUTES:
+
+    The file "Project.def" defines all the attributes of this
+    cmProject.  The simplest cmProject definition is simply
+    a collection of svn checkouts (iplemented as svn externals in the
+    cmProject directory).
+
+    <name>_SRC = <subversion URL> | <path> | <empty>
+        This is the only required attribute for each graft point. This
+        is the location of the sources to graft in. If the value is
+        a file system path then <name>_SRC_TYPE should be specified.
+        <name> is the name of the output subdirectory within the build
+        directory. If the value is empty, then <name>_SRC_TYPE will
+        default to "local".
+        - default: no default
+
+    The following are optional and have defaults if not specified.
+
+    <name>_MVARS = <make command line arguments> ...
+	Specifies additional command line arguments to append to the
+	make command line for a build (for SRC_TYPE "source", "kernel"
+	or "kernelmod").
+        - default: ""
+
+    <name>_EVARS = <make and configure environment variables> ...
+	Specifies additional variables to set in the environment for
+	the make command for a build (for SRC_TYPE "source", "kernel"
+	or "kernelmod"). If there is a configure script in the source
+	directory then this will also apply to the environment of the
+	configure script.
+        - default: ""
+
+    <name>_CARGS = <configure command line arguments> ...
+	Specifies additional command line options to append to the
+	configure command line for a build (for SRC_TYPE "source").
+        - default: ""
+
+    <name>_GRAFT = <cmProject relative path>
+	Specifies the path of the input graft point relative to the
+	cmProject directory.
+        - default: "<name>"
+
+    <name>_BUILD_TYPE = source | kernel | kernelmod | tgz | link | none
+	Specifies the method to be used to build/transform the output
+	from the input. If build type is "source" and the input
+	directory has no "Makefile" this is effectively "none". If the
+	build type is "link" and the input src type is a directory,
+	then a symlink will be created to this directory. If the buld
+	type is "link" and the source type is "link" then a symlink
+	will be created to the target. If the build type is
+	"kernelmod" then the first component listed in <name>_DEPS
+	will be used as the kernel to back to for building this kernel
+	module.
+        - default for SRC_TYPE "svn": "source"
+        - default for SRC_TYPE "link": "tgz"
+
+    <name>_BUILDDIR = <build path>
+	Specifies the path of the build directory. If the build path
+	starts with a '/' then it is considered absolute, otherwise it
+	is consider to be relatve to the "builddir" variable.
+
+    <name>_SRC_TYPE = svn | hg | link | local
+	Specifies the type of the input to graft in. Legal options are
+	"svn", "hg", "link", "local". "local" means that you have
+	a source directory within the cmProject that is not actually
+	an external but it should be treated as an cmProject input
+	(i.e. so that it can be built).
+        - default: "svn"
+
+    <name>_DEPS = <other name> ...
+        Specifies a build dependency on <other name>. This causes 
+        <other name> to be built before this one. In addition if
+        <name> uses a generic.mk based Makefile, then within that
+        Makefile the following will happen: VPATH will be set to the
+        source and build directory of <other name>, the source
+        directory of <other name> will be searched for include files,
+        and the build directory of <other name> will be searched for
+        library files.
+
+    <name>_REV = <svn or hg revision>
+	The revision of the sources to graft in. This only applies to
+	sources of type "svn" and "hg".
+        default: none, the same as "HEAD" (svn) or "tip" (mercurial)
+
+    OVERLAY_SCX1000 = <path>
+        Specifies the path to a full scx1000 checkout. When "make
+        overlay" is run, this makes the cmProject directory overlay
+        the path specified. This allows vtest to run against the
+        changes in cmProject directory. This can be specified in
+        "Project.def" for persistence or on the command line as "make
+        overlay OVERLAY_SCX1000=/path/to/scx1000/trunk".
+        - default: no default
+
+    <name>_ORIG = <subversion URL>
+        This variable is used for overlay mode and specifies the
+        origin (trunk) of the sources specified. For example, if you
+        branch trunk/sw/sc1 to branches/sw/my_sc1, then overlay mode
+        will not properly overlay the SimH input. By setting
+        <name>_ORIG to the original unbranched location, you can get
+        overlay mode to do the right behavior.
+
+    <name>_DEFCONFIG = <kernel config file>
+	This defaults to "sc1_defconfig". You can use this to change
+	the kernel config that is used for BUILD_TYPE of "kernel".
+
+
+PREDEFINED VARIABLES:
+
+    These variables can be referenced in "Project.def".
+
+    $(MAIN_REPO)
+        The base of the default subversion repository.
+        Currently: svn+ssh://svn.sicortex.com/svn/master
+
+    $(STASH)
+        The location of the binary repository. 
+        Currently: /stash
+
+    $(srcdir)
+        The absolute path to the top of the cmProject.
+
+    $(builddir)
+        The build directory. This defaults to "$(srcdir)/build".
+        However, $(builddir) can be overridden on the command
+        line.
+
+TARGETS:
+
+    The <name>_PRE and <name>_POST targets fire every time the output
+    build rule <name> is called.
+
+    <name>_PRE:
+        This specifies actions or dependencies to be performed prior
+        to the default output build action. For example this rule
+        would cause a configure script to always be run before the
+        default output build action on "foo": 
+            foo_PRE:
+                    cd $(builddir)/foo && $(srcdir)/foo/configure
+
+    <name>_POST:
+        This specifies additional actions to be performed after the
+        default output build action. This rule has an automatic
+        dependency on "<name>". For example, the following rule causes
+        the files "sc1" and "runsc1" to be symlinked into the "run/"
+        directory after the simh output directory has been built:
+
+            simh_POST:
+                    ln -sf $(buildir)/simh/BIN/sc1 $(srcdir)/run/sc1
+                    ln -sf $(srcdir)/simh/runsc1 $(srcdir)/run/runsc1
+
+ATTRIBUTE EXAMPLES:
+
+    # Graft in the HEAD of sc1 as a subversion externals checkout at
+    # the graft point "simh". Build as normal sources into
+    # <builddir>/simh.
+    simh_SRC = $(MAIN_REPO)/scx1000/trunk/sw/sc1/
+
+    # Graft in revision 11979 of sc1 as a subversion externals
+    # checkout at the graft point "sc1_old". Build as normal sources
+    # into <builddir>/older_sc1
+    older_sc1_SRC = $(MAIN_REPO)/scx1000/trunk/sw/sc1/
+    older_sc1_REV = -r11979
+    older_sc1_GRAFT = sc1_old
+
+    # Graft in the HEAD of linux sources as a subversion externals
+    # checkout at the graft point "linux". Build as kernel sources
+    # into <builddir>/linux
+    linux_SRC = $(MAIN_REPO)/software/devel/linux-2.6-linux-mips.org/trunk/
+    linux_BUILD_TYPE = kernel
+
+    # Graft in the HEAD of the scfab module as a subversion externals
+    # checkout at the graft point "scfab". Build as kernel module
+    # sources into <builddir>/scfab using build/linux as the backing
+    # kernel tree.
+    scfab_SRC = $(MAIN_REPO)/software/devel/sc1000-drivers/trunk/scfabric
+    scfab_BUILD_TYPE = kernelmod
+    scfab_DEPS = linux
+
+    # When the rootfs output target is invoked, the tarball that is
+    # referenced will be expanded in the build directory and a symlink
+    # named "rootfs-sim" will be created to the first file expanded
+    # from the tarball.
+    rootfs-sim_SRC = $(STASH)/gentoo/rootfs/rootfs-sim.ext2.n32.20051212.tgz
+    rootfs-sim_SRC_TYPE = link
+
