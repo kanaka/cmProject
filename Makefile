@@ -90,6 +90,7 @@ define setDEFAULTS
 
   # SRC_TYPE defaults depend on SRC
   ifneq ($$(findstring ://,$$($(1)_SRC)),)  # SRC contains '://'
+    # TODO: detect git:// and *.git for git sources
     $(1)_SRC_TYPE  ?= svn
   else
     ifneq ($$(filter /%,$$($(1)_SRC)),)     # SRC begins with '/'
@@ -105,7 +106,7 @@ define setDEFAULTS
   endif
 
   # Validate SRC_TYPE
-  ifneq ($$(filter-out svnco svn hg link local, $$($(1)_SRC_TYPE)),)
+  ifneq ($$(filter-out git svnco svn hg link local, $$($(1)_SRC_TYPE)),)
     $$(error Illegal value '$$($(1)_SRC_TYPE)' for $(1)_SRC_TYPE)
   endif
 
@@ -133,6 +134,16 @@ define setDEFAULTS
     HG_INPUTS += $(1)
     ifeq ($$($(1)_REV),HEAD)
       HG_INPUTS_UNPEGGED += peg_$(1)
+    endif
+    ifneq ($$(strip $$(filter -%,$$($(1)_REV))$$(filter r%,$$($(1)_REV))),)
+     $$(error Illegal format '$$($(1)_REV)' for $(1)_REV)
+    endif
+  endif
+  ifeq ($$($(1)_SRC_TYPE),git)            # SRC_TYPE is 'git'
+    $(1)_BUILD_TYPE ?= source
+    GIT_INPUTS += $(1)
+    ifeq ($$($(1)_REV),HEAD)
+      GIT_INPUTS_UNPEGGED += peg_$(1)
     endif
     ifneq ($$(strip $$(filter -%,$$($(1)_REV))$$(filter r%,$$($(1)_REV))),)
      $$(error Illegal format '$$($(1)_REV)' for $(1)_REV)
@@ -232,6 +243,18 @@ define POP_HG
     $(error populate sub-target $(1) [$($(1)_GRAFT)] not found) )
 endef
 
+define POP_GIT
+  $(if $($(1)_GRAFT), \
+    $(if $(wildcard $($(1)_GRAFT)), \
+      git --work-tree $($(1)_GRAFT) --git-dir $($(1)_GRAFT)/.git fetch -q; \
+      , \
+      git clone -q $($(1)_SRC) $($(1)_GRAFT); ) \
+    git --work-tree $($(1)_GRAFT) --git-dir $($(1)_GRAFT)/.git checkout -q $($(1)_REV:HEAD=master); \
+    echo -e "git graft '$($(1)_GRAFT)' at revision '$$(git --work-tree $($(1)_GRAFT) --git-dir $($(1)_GRAFT)/.git rev-parse HEAD)'"; \
+    , \
+    $(error populate sub-target $(1) [$($(1)_GRAFT)] not found) )
+endef
+
 define POP_LINK
   $(if $($(1)_GRAFT), \
     rm -f $($(1)_GRAFT:%/=%); \
@@ -241,7 +264,7 @@ define POP_LINK
     $(error populate sub-target $(1) [$($(1)_GRAFT)] not found) )
 endef
 
-POP_LIST = $(subst all,$(SVN_INPUTS) $(HG_INPUTS) $(LINK_INPUTS), \
+POP_LIST = $(subst all,$(SVN_INPUTS) $(GIT_INPUTS) $(HG_INPUTS) $(LINK_INPUTS), \
              $(pop_TARGETS) $(populate_TARGETS))
 
 .PHONY: pop populate
@@ -254,6 +277,7 @@ pop populate:
 	    , \
 	    $(if $(filter svnco svn,$($(X)_SRC_TYPE)),$(call POP_SVN,$(X))) ) \
 	  $(if $(filter hg,$($(X)_SRC_TYPE)), $(call POP_HG,$(X))) \
+	  $(if $(filter git,$($(X)_SRC_TYPE)), $(call POP_GIT,$(X))) \
 	  $(if $(filter link,$($(X)_SRC_TYPE)), $(call POP_LINK,$(X))) )
 
 
@@ -405,7 +429,7 @@ clean:
 ifeq ($(filter all,$(peg_TARGETS) $(unpeg_TARGETS)),)
   # Build peg list and make sure each item exists and is unpegged
   PEG_LIST = $(addprefix peg_,$(strip $(foreach X,$(peg_TARGETS), \
-               $(if $(filter peg_$(X),$(SVN_INPUTS_UNPEGGED) $(HG_INPUTS_UNPEGGED)),$(X), \
+               $(if $(filter peg_$(X),$(SVN_INPUTS_UNPEGGED) $(GIT_INPUTS_UNPEGGED) $(HG_INPUTS_UNPEGGED)),$(X), \
                  $(error failed to peg '$(X)': undefined or already pegged)))))
   # Build unpeg list and make sure each item exists and is pegged
   UNPEG_LIST = $(strip $(foreach X,$(unpeg_TARGETS), \
@@ -417,23 +441,25 @@ endif
 # Peg all
 ifneq ($(filter all,$(peg_TARGETS)),)
   # peg all will add a comment tag
-  PEG_LIST = $(SVN_INPUTS_UNPEGGED) $(HG_INPUTS_UNPEGGED)
+  PEG_LIST = $(SVN_INPUTS_UNPEGGED) $(HG_INPUTS_UNPEGGED) $(GIT_INPUTS_UNPEGGED)
   PEG_TAG = \# Added by 'make peg'
 endif
 
 # Unpeg all
 ifneq ($(filter all,$(unpeg_TARGETS)),)
   # unpeg of all will remove the revisions added by peg all.
-  UNPEG_LIST = $(SVN_INPUTS) $(HG_INPUTS)
+  UNPEG_LIST = $(SVN_INPUTS) $(HG_INPUTS) $(GIT_INPUTS)
   PEG_TAG = \# Added by 'make peg'
 endif
 
 
 # Peg svn and hg grafts to the current checked-out revision.
-.PHONY: $(SVN_INPUTS_UNPEGGED) $(HG_INPUTS_UNPEGGED)
-$(SVN_INPUTS_UNPEGGED) $(HG_INPUTS_UNPEGGED): peg_% :
+.PHONY: $(SVN_INPUTS_UNPEGGED) $(HG_INPUTS_UNPEGGED) $(GIT_INPUTS_UNPEGGED)
+$(SVN_INPUTS_UNPEGGED) $(HG_INPUTS_UNPEGGED) $(GIT_INPUTS_UNPEGGED): peg_% :
 	$(AT) \
-	if [ "$($*_SRC_TYPE)" = "hg" ]; then \
+	if [ "$($*_SRC_TYPE)" = "git" ]; then \
+	  rev=$$(git --work-tree $($*_GRAFT) --git-dir $($*_GRAFT)/.git rev-parse HEAD); \
+	elif [ "$($*_SRC_TYPE)" = "hg" ]; then \
 	  rev=$$(hg -R $($*_GRAFT) tip --template "{node}"); \
 	else \
 	  rev=$$(svn st -v $($*_GRAFT) | awk '{print $$2}' | sort -n | tail -n1); \
@@ -441,7 +467,7 @@ $(SVN_INPUTS_UNPEGGED) $(HG_INPUTS_UNPEGGED): peg_% :
 	if [ -n "$$rev" ]; then \
 	  echo Pegging $* to "$$rev"; \
 	  sed -i "s:^\($*_REV.*\)$$:#\1:" $(DEF_FILE); \
-	  sed -i "s:^\($*_SRC[^_A-z].*\)$$:\1\n$*_REV = $$rev $(PEG_TAG):" $(DEF_FILE); \
+	  sed -i "s:^\($*_SRC[^_A-Za-z].*\)$$:\1\n$*_REV = $$rev $(PEG_TAG):" $(DEF_FILE); \
 	else \
 	  echo Could not get version for \'$*\'. Perhaps run \'make pop\'; \
 	  exit 1; \
@@ -469,6 +495,10 @@ ifneq ($(filter tag%,$(MAKECMDGOALS)),)
   endif
   ifneq ($(strip $(HG_INPUTS_UNPEGGED)),)
     $(error Unpegged 'hg' inputs: [ $(HG_INPUTS_UNPEGGED:peg_%=%) ]. \
+             Run "make peg" to peg first)
+  endif
+  ifneq ($(strip $(GIT_INPUTS_UNPEGGED)),)
+    $(error Unpegged 'git' inputs: [ $(GIT_INPUTS_UNPEGGED:peg_%=%) ]. \
              Run "make peg" to peg first)
   endif
   ifneq ($(strip $(LINK_INPUTS_UNPEGGED)),)
@@ -505,6 +535,7 @@ tag_check:
 	  $(foreach X,$(SVN_INPUTS),-e "^Performing .* '$($(X)_GRAFT)'$$") \
 	  $(foreach X,$(SVN_INPUTS),-e "^\?     *$($(X)_GRAFT)$$") \
 	  $(foreach X,$(HG_INPUTS),-e "^\?     *$($(X)_GRAFT)$$") \
+	  $(foreach X,$(GIT_INPUTS),-e "^\?     *$($(X)_GRAFT)$$") \
 	  $(foreach X,$(LINK_INPUTS),-e "^\?     *$($(X)_GRAFT)$$"); \
 	  \
 	  $(foreach X,$(HG_INPUTS),\
@@ -512,6 +543,13 @@ tag_check:
 	      | egrep -v "$($(X)_REV: =)"; \
 	    hg st -R $($(X)_GRAFT) \
 	      | sed "s:  *:$$(printf '%39s')$($(X)_GRAFT)/:"; ) \
+	  \
+	  $(foreach X,$(GIT_INPUTS),\
+	    git --work-tree $($(X)_GRAFT) --git-dir $($(X)_GRAFT)/.git rev-parse HEAD \
+	      | sed "s:^:$($(X)_GRAFT)/ :" \
+	      | egrep -v "$($(X)_REV: =)"; \
+	    git --work-tree $($(X)_GRAFT) --git-dir $($(X)_GRAFT)/.git status -s \
+	      | sed "s:^\(..\) :\1$$(printf '%39s')$($(X)_GRAFT)/:"; ) \
 	  \
 	  for link in $$(find run -type l); do \
 	    readlink -f "$$link" \
