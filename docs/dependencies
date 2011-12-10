@@ -1,9 +1,9 @@
 cmProject dependencies:
 
 General:
-    - gmake
+    - GNU make
     - svn
-    - sh (bourne compatible)
+    - bash
     - readlink (-f)
     - rm
     - mkdir (-p)

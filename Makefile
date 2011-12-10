@@ -23,14 +23,26 @@
 ######################################################
 
 ######################################################
+# General settings
+######################################################
+
+# Force bash since bourne shell is a bit too limited
+SHELL := /bin/bash
+
+# CMDEBUG: Print out cmProject shell commands
+ifeq ($(CMDEBUG),)
+  AT = @
+endif
+
+######################################################
 # Site specific settings
 ######################################################
 
-MAIN_REPO := svn+ssh://svn.sicortex.com/svn/master
+MAIN_REPO := https://github.com/
 
-# Project_Root still needs a stub _SRC in Project.def so
-# that it can be pegged to a specific revision.
-Project_Root_SRC = $(MAIN_REPO)/scx1000/trunk/Project_Root
+# cmProject still needs a stub cmProject_SRC in Project.def
+# so that it can be pegged to a specific revision.
+cmProject_SRC = $(MAIN_REPO)/kanaka/cmProject
 
 # Objects in the "stash" must always be reproducible
 STASH := /stash
@@ -46,9 +58,9 @@ builddir ?= $(shell readlink -f .)/build
 # This the top level default rule (must be before Project.def)
 all default: default_real
 
-# Do not build Project_Root
-Project_Root_BUILD_TYPE = none
-Project_Root_MKDIR:
+# Do not build cmProject
+cmProject_BUILD_TYPE = none
+cmProject_MKDIR:
 
 # Pull in the project definition, but allow the user to override
 Project_Def_File = Project.def   # For backward compatibility
@@ -63,11 +75,6 @@ endif
 ######################################################
 # Set attribute defaults and group them by type
 ######################################################
-
-# CMDEBUG: Print out cmProject shell commands
-ifeq ($(CMDEBUG),)
-  AT = @
-endif
 
 # Based on *_SRC variables, create the list of NAMES
 NAMES = $(patsubst %_SRC,%,$(filter %_SRC,$(.VARIABLES)))
@@ -538,12 +545,12 @@ help:
 	@for myhelp in $(help_TARGETS); do \
 	  case $$myhelp in  \
 	    cmProject|cmproject|CMProject) \
-	      $${PAGER:-less} $(srcdir)/Project_Root/Makefile.README ;; \
-	    generic.mk|genericmk|GenericMk) \
-	      $(MAKE) -f $(srcdir)/sw/include/generic.mk \
+	      $${PAGER:-less} $(srcdir)/cmProject/Makefile.README ;; \
+	    auto.mk|automk|generic.mk|genericmk|GenericMk) \
+	      $(MAKE) -f $(srcdir)/auto.mk/auto.mk \
 	              PROJECT=$(srcdir) help ;; \
 	    *) \
-	      echo "Try help^cmProject or help^generic.mk" ;; \
+	      echo "Try help^cmProject or help^auto.mk" ;; \
 	  esac; \
 	done; \
 
@@ -577,4 +584,4 @@ print-%:
 # Include other modules
 ######################################################
 
-include $(wildcard $(Project_Root_GRAFT)/modules/*.mk)
+include $(wildcard $(cmProject_GRAFT)/modules/*.mk)

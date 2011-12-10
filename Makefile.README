@@ -3,7 +3,7 @@ cmProject:
 OVERVIEW:
 
     A cmProject is a specified collection of input components, the
-    logic for how to turn those inputs into outputs, and a possibly
+    logic for how to turn those inputs into outputs, and possibly
     a set of tests that the outputs should satisfy. This information
     is defined in the file "Project.def". This file uses a simple
     subset of makefile syntax and contains attributes that define
@@ -25,7 +25,7 @@ KEY CONCEPTS:
         a different makefile. The important thing to note is that
         different levels of recursive make invocations do not share
         the same name-space. The master cmProject makefile and the
-        Project.def and in one makefile namespace. The makefiles for
+        Project.def are in one makefile namespace. The makefiles for
         each sub-component of a cmProject are in separate namespaces
         from each other and from the top level cmProject namespace.
 
@@ -37,28 +37,29 @@ KEY CONCEPTS:
 
 RULES/ACTIONS:
 
-    The program scmake wrapper simply finds the top of the cmProject
-    directory and runs make there.
+    The following commands should be run from the top level of the
+    project (the directory containing Project.def). To run them with
+    debug, add CMDEBUG=1 to the make command line.
 
-    scmake populate
+    make populate
         Updates the component inputs based on the attributes in
         "Project.def" and then runs `svn update` to bring the svn
         external inputs up to date.
         "pop" is an alias for "populate".
     
-    scmake populate^<name>
+    make populate^<name>
         Only update a single component input. Note that this updates
         the svn externals definition for svn inputs, but only runs
         `svn update` on the input graft point specified.
 
-    scmake
+    make
         Builds the outputs for all of the inputs defined in
         "Project.def". By default, each the output from each component
         build will be placed in "build/<component name>", however, the
         "builddir" make commandline variable can be used to overide
         the top-level output directory.
 
-    scmake <name>
+    make <name>
         Rebuild a single component output. This may trigger other
         outputs to be rebuilt if they are specified as dependencies of
 	the requested output (i.e. via <name>_DEPS or <name>_PRE
@@ -67,29 +68,29 @@ RULES/ACTIONS:
 	directory. If the build or source directory contains
 	a Makefile then this is executed to perform the build.
     
-    scmake <name>^<sub-target>
+    make <name>^<sub-target>
         The sub-target form appends <sub-target> to the make command.
         This is useful for building objects that may not be included
         in the "all" rule of the component Makefile.  A common use
-        of this is to clean just one build directory: `scmake
+        of this is to clean just one build directory: `make
         simh^clean`.  This is only meaningful if BUILD_TYPE is
         "source", "kernel" or "kernelmod".
 
-    scmake clean
+    make clean
         Removes the entire build directory.
     
-    scmake clean^<name>
+    make clean^<name>
         The sub-target form only removes <name> from the build
-        directory. This is different from `scmake <name>^clean` in
+        directory. This is different from `make <name>^clean` in
         that it does a recursive remove rather than calling
         the "clean" target in component Makefile.
 
-    scmake peg
+    make peg
         Locks down each input to a specific svn revision by updating
         "Project.def" so that all "svn" and "hg" inputs have
         a revision attribute (<name>_REV). This is generally done
         prior to tagging. Pegged revisions added in this manner have
-        a trailing comment that allows them to be removed by `scmake
+        a trailing comment that allows them to be removed by `make
         unpeg`. To make the pegged revision stick, simply remove this
         comment in "Project.def".
 
@@ -98,23 +99,23 @@ RULES/ACTIONS:
         only links into the binary repository are guaranteed to be
         valid in the future.
     
-    scmake peg^<name>
+    make peg^<name>
 	The sub-target form only pegs a single input and it does not
 	add the trailing comment. This is equivalent to manually
 	pegging the input to its current revision.
 
-    scmake unpeg
+    make unpeg
         Removes any revision attributes from "Project.def" that were
-        added by `scmake peg`. This is generally done after a tagging
+        added by `make peg`. This is generally done after a tagging
         operation. This will only remove pegged revision that have
-        a trailing comment indicating they were added by `scmake peg`.
+        a trailing comment indicating they were added by `make peg`.
     
-    scmake unpeg^<name>
+    make unpeg^<name>
         The sub-target form unpegs a single input. The input will be
         unpegged regardless of whether the trailing peg comment is
         present. 
 
-    scmake tag TAG=TAGNAME
+    make tag TAG=TAGNAME
 	Tags the current cmProject so that it can be recreated
 	identically in the future. The variable TAG must be used to
 	set repo location for where the tag will be created. The
@@ -122,12 +123,12 @@ RULES/ACTIONS:
 
         The normal sequence of operations to tag a cmProject would be:
             <check in all source changes in graft directories>
-            scmake peg
-            scmake pop (subversion limitation to sync file revisions)
-            scmake tag TAG=TAGNAME
-            scmake unpeg
+            make peg
+            make pop (subversion limitation to sync file revisions)
+            make tag TAG=TAGNAME
+            make unpeg
 
-    scmake tag_check
+    make tag_check
 	Check to see if anything would prevent tagging. The action is
 	succesful if the following checks pass:
 	    - Input graft areas are fully committed
@@ -137,7 +138,7 @@ RULES/ACTIONS:
             - Only toplevel externals (Project.def defined)
 
 
-    scmake overlay  [OVERLAY_SCX1000=<path>]
+    make overlay  [OVERLAY_SCX1000=<path>]
          This action causes your cmProject to overlay a full scx1000
          tree checkout using symlinks. This allows you to run hardware
          tests on the current source changes in your cmProject
@@ -153,14 +154,14 @@ RULES/ACTIONS:
          readonly). If you find a case that you think should be
          allowed please raise this to the cmProject maintainer(s).
 
-    scmake unoverlay
-        Remove the overlay symlinks that were created by `scmake
-        overlay`.
+    make unoverlay
+	Remove the overlay symlinks that were created by `make
+	overlay`.
 
-    scmake showVars 
+    make showVars 
         Show the run time values of cmProject variables.
     
-    scmake showVars^<name>
+    make showVars^<name>
         The sub-target form lists all <name>_* variables.
 
 ATTRIBUTES:
