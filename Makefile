@@ -43,6 +43,7 @@ MAIN_REPO := https://github.com/
 # cmProject still needs a stub cmProject_SRC in Project.def
 # so that it can be pegged to a specific revision.
 cmProject_SRC = $(MAIN_REPO)/kanaka/cmProject
+cmProject_SRC_TYPE = git
 
 # Objects in the "stash" must always be reproducible
 STASH := /stash
